@@ -108,7 +108,7 @@ public class LocalStore extends Store implements Serializable {
     static private String GET_FOLDER_COLS = "id, name, unread_count, visible_limit, last_updated, status, push_state, last_pushed, flagged_count, integrate, top_group, poll_class, push_class, display_class";
 
 
-    protected static final int DB_VERSION = 43;
+    protected static final int DB_VERSION = 44;
 
     protected String uUid = null;
 
@@ -147,7 +147,27 @@ public class LocalStore extends Store implements Serializable {
         public int getVersion() {
             return DB_VERSION;
         }
+        
+        /**
+         * Create a schema for predicting mail->folder moves.
+         * TODO - cleanup old addresses using the updated field (and cascade to probabilities)
+         * TODO - do something with the stored data
+         */
+        private void createProbabilitySchema(final SQLiteDatabase db) {
+            db.execSQL("DROP TABLE IF EXISTS addresses");
+            db.execSQL("CREATE TABLE addresses (id INTEGER PRIMARY KEY, "
+            		+ "address TEXT, count INTEGER, updated INTEGER"
+            		+ ")");
+            db.execSQL("CREATE INDEX IF NOT EXISTS address_text ON addresses (address)");
 
+            db.execSQL("DROP TABLE IF EXISTS address_to_folder_probabilities");
+            db.execSQL("CREATE TABLE address_to_folder_probabilities (id INTEGER PRIMARY KEY, "
+            		+ "address_id INTEGER, folder_id INTEGER, probability REAL, count INTEGER"
+            		+ ")");
+            db.execSQL("CREATE INDEX IF NOT EXISTS address_to_folder_probabilities_address_id ON address_to_folder_probabilities (address_id)");
+            db.execSQL("CREATE INDEX IF NOT EXISTS address_to_folder_probabilities_folder_id ON address_to_folder_probabilities (folder_id)");
+        }
+        
         @Override
         public void doDbUpgrade(final SQLiteDatabase db) {
             Log.i(K9.LOG_TAG, String.format("Upgrading database from version %d to version %d",
@@ -198,6 +218,8 @@ public class LocalStore extends Store implements Serializable {
                     db.execSQL("DROP TRIGGER IF EXISTS delete_message");
                     db.execSQL("CREATE TRIGGER delete_message BEFORE DELETE ON messages BEGIN DELETE FROM attachments WHERE old.id = message_id; "
                                + "DELETE FROM headers where old.id = message_id; END;");
+
+                    createProbabilitySchema(db);
                 } else {
                     // in the case that we're starting out at 29 or newer, run all the needed updates
 
@@ -367,6 +389,14 @@ public class LocalStore extends Store implements Serializable {
                         } catch (Exception e) {
                             Log.e(K9.LOG_TAG, "Error trying to fix the outbox folders", e);
                         }
+                    }
+                    if (db.getVersion() < 44) {
+                        try {
+                            createProbabilitySchema(db);
+                        } catch (SQLiteException e) {
+                            throw e;
+                        }
+
                     }
                 }
             }
@@ -1986,6 +2016,90 @@ public class LocalStore extends Store implements Serializable {
                                            });
 
                                 /*
+                                 * Update address to folder mapping for future move predictions.
+                                 * The probability of being filed in a given folder when a given recipient is
+                                 * present is simply the historical probability.
+                                 */
+                                List<Address> addresses = new LinkedList<Address>();
+                                for (Address address : message.getRecipients(RecipientType.TO)) {
+                                	addresses.add(address);
+                                }
+                                for (Address address : message.getRecipients(RecipientType.CC)) {
+                                	addresses.add(address);
+                                }
+                                for (Address address : addresses) {
+                                	//Fetch the address record.
+                                	Cursor c = db.query("addresses", new String[] { "id", "count" },
+                                			"address=?", new String[] { address.getAddress() },
+                                			null, null, null);
+                                	
+                                	Long addressId;
+                                	int addressCount = 1;
+                                	
+                                	if (c.getCount() == 0) {
+                                		ContentValues cv = new ContentValues();
+                                		cv.put("address", address.getAddress());
+                                		cv.put("count", 1);
+                                		cv.put("updated", System.currentTimeMillis());
+                                		addressId = db.insert("addresses", null, cv);
+                                	} else {
+                                		c.moveToNext();
+                                		addressId = c.getLong(0);
+                                		addressCount = c.getInt(1);
+                                		addressCount++;
+                                		ContentValues cv = new ContentValues();
+                                		cv.put("address", address.getAddress());
+                                		cv.put("count", addressCount);
+                                		cv.put("updated", System.currentTimeMillis());
+                                		db.update("addresses", cv, "id=?", new String[] { addressId.toString() });
+                                	}
+                                	
+                                	c.close();
+                                	
+                                	//Update probabilities for the move.
+                            		Long incProbId;
+                            		
+                                	c = db.query("address_to_folder_probabilities", 
+                                			new String[] { "id" },
+                                			"address_id=? AND folder_id=?", new String[] { addressId.toString(), lDestFolder.getId()+"" },
+                                			null, null, null);
+                                	
+                                	if (c.getCount() == 0) {
+                                    	c.close();
+                                		ContentValues cv = new ContentValues();
+                                		cv.put("address_id", addressId);
+                                		cv.put("folder_id", lDestFolder.getId());
+                                		cv.put("probability", 1.0/(float)addressCount);
+                                		cv.put("count", 0);
+                                		incProbId = db.insert("address_to_folder_probabilities", null, cv);
+                                	} else {
+                                		c.moveToNext();
+                                		incProbId = c.getLong(0);
+                                    	c.close();
+                                	}
+
+                            		c = db.query("address_to_folder_probabilities", new String[] { "id", "count" },
+                            				"address_id=?", new String[] { addressId.toString() }, null, null, null);
+                            		if (c.getCount() > 0) {
+                            			while (c.moveToNext()) {
+                                    		long probId = c.getLong(0);
+                                    		int probCount = c.getInt(1);
+
+	                                		ContentValues cv = new ContentValues();
+	                                		if (probId == incProbId) {
+                                    			probCount++;
+                                    			cv.put("count", probCount);
+                                    		}
+                                    		
+	                                		cv.put("probability", probCount/(float)addressCount);
+	                                		db.update("address_to_folder_probabilities", cv, "id=?", new String[] { probId+"" });
+                            			}
+                            		}
+                            		
+                            		c.close();
+                                }
+                                
+                                /*
                                  * Add a placeholder message so we won't download the original
                                  * message again if we synchronize before the remote move is
                                  * complete.
@@ -3012,6 +3126,14 @@ public class LocalStore extends Store implements Serializable {
         }
 
 
+        /**
+         * Rank folders based on likelihood of a message explicitly being filed there by the user.
+         * @return A cursor.
+         */
+        public Cursor predictFolders(int n, int page, int pageSize) {
+        	return null;
+        }
+        
         /* Custom version of writeTo that updates the MIME message based on localMessage
          * changes.
          */
