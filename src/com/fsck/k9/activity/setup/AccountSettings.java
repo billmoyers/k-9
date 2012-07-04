@@ -912,7 +912,7 @@ public class AccountSettings extends K9PreferenceActivity {
         @Override
         protected Void doInBackground(Void... params) {
             try {
-                folders = mAccount.getLocalStore().getPersonalNamespaces(false);
+                folders = mAccount.getLocalStore().getPersonalNamespaces(false, null);
             } catch (Exception e) {
                 /// this can't be checked in
             }

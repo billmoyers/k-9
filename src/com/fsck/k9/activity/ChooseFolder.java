@@ -33,6 +33,7 @@ import com.fsck.k9.R;
 import com.fsck.k9.controller.MessagingController;
 import com.fsck.k9.controller.MessagingListener;
 import com.fsck.k9.mail.Folder;
+import com.fsck.k9.mail.MessageSummary;
 import com.fsck.k9.mail.MessagingException;
 
 public class ChooseFolder extends K9ListActivity {
@@ -44,7 +45,7 @@ public class ChooseFolder extends K9ListActivity {
     public static final String EXTRA_SHOW_CURRENT = "com.fsck.k9.ChooseFolder_showcurrent";
     public static final String EXTRA_SHOW_FOLDER_NONE = "com.fsck.k9.ChooseFolder_showOptionNone";
     public static final String EXTRA_SHOW_DISPLAYABLE_ONLY = "com.fsck.k9.ChooseFolder_showDisplayableOnly";
-
+    public static final String EXTRA_MESSAGE_SUMMARY = "com.fsck.k9.ChooseFolder_messageSummary";
 
     String mFolder;
     String mSelectFolder;
@@ -56,6 +57,8 @@ public class ChooseFolder extends K9ListActivity {
     boolean mHideCurrentFolder = true;
     boolean mShowOptionNone = false;
     boolean mShowDisplayableOnly = false;
+
+    MessageSummary mMessageSummary;
 
     /**
      * What folders to display.<br/>
@@ -87,6 +90,7 @@ public class ChooseFolder extends K9ListActivity {
         mMessageReference = intent.getParcelableExtra(EXTRA_MESSAGE);
         mFolder = intent.getStringExtra(EXTRA_CUR_FOLDER);
         mSelectFolder = intent.getStringExtra(EXTRA_SEL_FOLDER);
+        mMessageSummary = intent.getParcelableExtra(EXTRA_MESSAGE_SUMMARY);
         if (intent.getStringExtra(EXTRA_SHOW_CURRENT) != null) {
             mHideCurrentFolder = false;
         }
@@ -98,7 +102,7 @@ public class ChooseFolder extends K9ListActivity {
         }
         if (mFolder == null)
             mFolder = "";
-
+        
         mAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1) {
             private Filter myFilter = null;
 
@@ -289,6 +293,12 @@ public class ChooseFolder extends K9ListActivity {
             }
             mHandler.progress(false);
         }
+        
+        @Override
+        public MessageSummary getMessageForListingFolders() {
+        	return mMessageSummary;
+        }
+        
         @Override
         public void listFolders(Account account, Folder[] folders) {
             if (!account.equals(mAccount)) {
@@ -333,6 +343,8 @@ public class ChooseFolder extends K9ListActivity {
                 localFolders.add(K9.FOLDER_NONE);
             }
 
+            final boolean lexicographicalSort = mMessageSummary == null;
+            
             Collections.sort(localFolders, new Comparator<String>() {
                 @Override
                 public int compare(String aName, String bName) {
@@ -349,7 +361,11 @@ public class ChooseFolder extends K9ListActivity {
                         return 1;
                     }
 
-                    return aName.compareToIgnoreCase(bName);
+                    if (lexicographicalSort) {
+                    	return aName.compareToIgnoreCase(bName);
+                    } else {
+                    	return 0;
+                    }
                 }
             });
             int selectedFolder = -1;

@@ -1,15 +1,17 @@
 
 package com.fsck.k9.controller;
 
+import java.util.List;
+
 import android.content.Context;
+
 import com.fsck.k9.Account;
 import com.fsck.k9.AccountStats;
 import com.fsck.k9.BaseAccount;
 import com.fsck.k9.mail.Folder;
 import com.fsck.k9.mail.Message;
+import com.fsck.k9.mail.MessageSummary;
 import com.fsck.k9.mail.Part;
-
-import java.util.List;
 
 /**
  * Defines the interface that {@link MessagingController} will use to callback to requesters.
@@ -38,7 +40,8 @@ public class MessagingListener {
 
     public void listFoldersFailed(Account account, String message) {}
 
-
+    public MessageSummary getMessageForListingFolders() { return null; };
+    
     public void listLocalMessagesStarted(Account account, String folder) {}
 
     public void listLocalMessages(Account account, String folder, Message[] messages) {}

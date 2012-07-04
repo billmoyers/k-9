@@ -74,6 +74,7 @@ import com.fsck.k9.mail.FetchProfile;
 import com.fsck.k9.mail.Flag;
 import com.fsck.k9.mail.Folder;
 import com.fsck.k9.mail.Message;
+import com.fsck.k9.mail.MessageSummary;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.Part;
 import com.fsck.k9.mail.PushReceiver;
@@ -521,7 +522,7 @@ public class ImapStore extends Store {
     }
 
     @Override
-    public List <? extends Folder > getPersonalNamespaces(boolean forceListAll) throws MessagingException {
+    public List <? extends Folder > getPersonalNamespaces(boolean forceListAll, MessageSummary messageSummary) throws MessagingException {
         ImapConnection connection = getConnection();
         try {
             List <? extends Folder > allFolders = listFolders(connection, false);

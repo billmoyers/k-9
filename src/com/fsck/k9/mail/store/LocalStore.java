@@ -47,6 +47,7 @@ import com.fsck.k9.mail.Flag;
 import com.fsck.k9.mail.Folder;
 import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.Message.RecipientType;
+import com.fsck.k9.mail.MessageSummary;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.Part;
 import com.fsck.k9.mail.Store;
@@ -341,7 +342,7 @@ public class LocalStore extends Store implements Serializable {
                             long startTime = System.currentTimeMillis();
                             SharedPreferences.Editor editor = getPreferences().edit();
 
-                            List <? extends Folder >  folders = getPersonalNamespaces(true);
+                            List <? extends Folder >  folders = getPersonalNamespaces(true, null);
                             for (Folder folder : folders) {
                                 if (folder instanceof LocalFolder) {
                                     LocalFolder lFolder = (LocalFolder)folder;
@@ -658,7 +659,7 @@ public class LocalStore extends Store implements Serializable {
 
     // TODO this takes about 260-300ms, seems slow.
     @Override
-    public List <? extends Folder > getPersonalNamespaces(boolean forceListAll) throws MessagingException {
+    public List <? extends Folder > getPersonalNamespaces(boolean forceListAll, final MessageSummary messageSummary) throws MessagingException {
         final List<LocalFolder> folders = new LinkedList<LocalFolder>();
         try {
             database.execute(false, new DbCallback < List <? extends Folder >> () {
@@ -667,7 +668,11 @@ public class LocalStore extends Store implements Serializable {
                     Cursor cursor = null;
 
                     try {
-                        cursor = db.rawQuery("SELECT " + GET_FOLDER_COLS + " FROM folders ORDER BY name ASC", null);
+                    	if (messageSummary == null) {
+                    		cursor = db.rawQuery("SELECT " + GET_FOLDER_COLS + " FROM folders ORDER BY name ASC", null);
+                    	} else {
+                    		cursor = db.rawQuery("SELECT " + GET_FOLDER_COLS + " FROM folders ORDER BY name DESC", null);
+                    	}
                         while (cursor.moveToNext()) {
                             LocalFolder folder = new LocalFolder(cursor.getString(1));
                             folder.open(cursor.getInt(0), cursor.getString(1), cursor.getInt(2), cursor.getInt(3), cursor.getLong(4), cursor.getString(5), cursor.getString(6), cursor.getLong(7), cursor.getInt(8), cursor.getInt(9), cursor.getInt(10), cursor.getString(11), cursor.getString(12), cursor.getString(13));

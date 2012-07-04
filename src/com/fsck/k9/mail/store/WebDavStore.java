@@ -410,7 +410,7 @@ public class WebDavStore extends Store {
     }
 
     @Override
-    public List <? extends Folder > getPersonalNamespaces(boolean forceListAll) throws MessagingException {
+    public List <? extends Folder > getPersonalNamespaces(boolean forceListAll, MessageSummary messageSummary) throws MessagingException {
         LinkedList<Folder> folderList = new LinkedList<Folder>();
         /**
          * We have to check authentication here so we have the proper URL stored
